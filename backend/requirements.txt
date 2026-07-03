@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic-settings
+pymupdf
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1+cpu
+sentence-transformers==3.0.1
+qdrant-client
+requests
+rank-bm25
+pytest
