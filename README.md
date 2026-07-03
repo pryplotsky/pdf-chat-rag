@@ -1,48 +1,62 @@
 # PDF Chat RAG
 
-A local open-source RAG application for chatting with PDF documents using FastAPI, Streamlit, Qdrant, SentenceTransformers, and Ollama.
+Local PDF question-answering application that turns uploaded documents into a searchable knowledge base and answers business questions with cited sources, retrieval diagnostics, and analytics.
 
-## Features
+This project demonstrates an end-to-end Retrieval-Augmented Generation (RAG) workflow using FastAPI, Streamlit, Qdrant, SentenceTransformers, BM25, CrossEncoder reranking, SQLite analytics, and a local Ollama LLM.
 
-- PDF upload
-- Page-level text extraction
-- Hybrid dense and sparse retrieval
-- Query enhancement with rewritten and step-back queries
-- Reciprocal Rank Fusion with chunk deduplication
-- CrossEncoder reranking
-- Chunk inspection in the Documents tab
-- SQLite RAG analytics dashboard
-- Local LLM answers
-- Page-level citations
-- Source quotes
-- Hallucination-safe fallback
+## Business Problem
 
-## Analytics
+Teams often store important information in PDFs: candidate profiles, interview notes, policies, reports, technical documentation, contracts, and internal knowledge documents. Finding the right answer manually is slow, especially when users need evidence from the original document.
 
-The backend logs ingestion and chat metrics to SQLite and exposes them through API endpoints.
-The Streamlit app includes an `Analytics` tab with summary cards and recent logs.
+This application solves that by letting users:
 
-Tracked ingestion metrics:
+- Upload a PDF.
+- Ask natural-language questions.
+- Retrieve the most relevant document passages.
+- Generate a grounded answer using only the retrieved context.
+- Inspect the exact source chunks used for the answer.
+- Track latency, token usage, and pipeline performance.
 
-- Total preprocessing time
-- PDF parsing time
-- Chunking time
-- Embedding time
-- Qdrant upsert time
-- Pages and chunks per document
+The result is a local, privacy-friendly RAG MVP that can be used to prototype document search, HR screening support, internal knowledge assistants, and PDF-based Q&A workflows.
 
-Tracked chat metrics:
+## Demo
 
-- Total response time
-- Query embedding time
-- Qdrant search time
-- Prompt build time
-- LLM generation time
-- Prompt tokens
-- Generated tokens
-- Total tokens
-- Retrieved chunks
-- Average relevance score
+### Chat With a PDF
+
+The chat view shows the selected document, user question, generated answer, timing metrics, enhanced retrieval queries, and cited source chunks.
+
+![Chat answer demo](docs/images/chat_answer_demo.png)
+
+### RAG Analytics Dashboard
+
+The analytics view tracks response time, preprocessing time, LLM latency, token usage, retrieved chunks, recent questions, and document ingestion metrics.
+
+![Analytics demo](docs/images/analytics_demo.png)
+
+## Key Capabilities
+
+- PDF upload and ingestion.
+- Page-level text extraction with PyMuPDF.
+- Dense vector retrieval with Qdrant.
+- Sparse keyword retrieval with BM25.
+- Query enhancement for stronger search coverage.
+- Reciprocal Rank Fusion to combine dense and sparse results.
+- CrossEncoder reranking for better final chunk ordering.
+- Local answer generation with Ollama.
+- Page-level citations and source quotes.
+- Chunk inspection for debugging retrieval quality.
+- SQLite analytics dashboard for latency and token tracking.
+- Fully local Docker-based setup.
+
+## Why This Project Matters
+
+This is more than a basic chatbot. It shows the core engineering pieces behind a production-style RAG system:
+
+- **Retrieval quality:** combines semantic search, keyword search, fusion, and reranking.
+- **Grounding:** answers are generated from selected PDF chunks rather than open-ended model memory.
+- **Observability:** tracks response time, LLM time, retrieval time, token usage, and ingestion metrics.
+- **Local-first design:** runs on a laptop without external LLM APIs or paid cloud services.
+- **Debuggability:** exposes enhanced queries, timing breakdowns, chunks, and sources.
 
 ## Architecture
 
@@ -57,39 +71,99 @@ FastAPI backend :8000
   |       |         |
   |       |         +--> Ollama on Windows :11434
   |       |
-  |       +--> SQLite metadata + chunk text /app/data/app.db
+  |       +--> SQLite metadata, chunks, and analytics
   |
-  +--> Qdrant vector DB :6333
+  +--> Qdrant vector database :6333
+```
 
-PDF upload -> PyMuPDF pages -> character chunks -> MiniLM embeddings -> Qdrant
-           -> chunk text + metadata -> SQLite
+Document ingestion:
 
-Question -> query enhancement
-         -> dense Qdrant search for each query variant
-         -> sparse BM25 search for each query variant
-         -> Reciprocal Rank Fusion + dedupe
-         -> CrossEncoder reranking
-         -> top chunks -> Ollama prompt -> cited answer
+```text
+PDF upload
+  -> PyMuPDF text extraction
+  -> text chunking
+  -> MiniLM embeddings
+  -> Qdrant vector storage
+  -> SQLite metadata and chunk storage
+```
+
+Question answering:
+
+```text
+User question
+  -> query enhancement
+  -> dense Qdrant retrieval
+  -> sparse BM25 retrieval
+  -> Reciprocal Rank Fusion
+  -> CrossEncoder reranking
+  -> top chunks
+  -> Ollama answer generation
+  -> cited answer + metrics
 ```
 
 ## Retrieval Pipeline
 
-The app uses an enhanced local RAG pipeline optimized for a CPU-only laptop:
+The app uses a hybrid retrieval pipeline optimized for a CPU-only laptop:
 
 1. The original question is enhanced into up to 3 query variants.
-2. Each query variant is embedded with MiniLM.
-3. Qdrant retrieves the top 25 dense vector candidates per query variant.
-4. BM25 retrieves the top 25 sparse keyword candidates per query variant from the SQLite chunk table.
-5. Dense and sparse ranked lists are merged with Reciprocal Rank Fusion.
+2. Each query variant is embedded with `sentence-transformers/all-MiniLM-L6-v2`.
+3. Qdrant retrieves dense vector candidates.
+4. BM25 retrieves sparse keyword candidates from SQLite chunk text.
+5. Reciprocal Rank Fusion merges dense and sparse ranked lists.
 6. Duplicate chunks are removed during fusion.
-7. The top 25 fused candidates are reranked with `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-8. The final top 3 chunks are sent to Ollama as the only answer context.
+7. The top fused candidates are reranked with `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+8. The final top chunks are sent to Ollama as the only answer context.
+
+## Analytics
+
+The application includes a lightweight RAG analytics tracker using SQLite.
+
+Tracked ingestion metrics:
+
+- Number of pages.
+- Number of chunks.
+- Total preprocessing time.
+- PDF parsing time.
+- Chunking time.
+- Embedding time.
+- Qdrant upsert time.
+
+Tracked chat metrics:
+
+- Total response time.
+- Query enhancement time.
+- Query embedding time.
+- Qdrant search time.
+- BM25 search time.
+- Fusion time.
+- Reranking time.
+- Prompt build time.
+- LLM generation time.
+- Prompt tokens.
+- Generated tokens.
+- Retrieved chunks.
+- Average relevance score.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Streamlit |
+| Backend API | FastAPI |
+| Vector database | Qdrant |
+| Metadata and analytics | SQLite |
+| PDF parsing | PyMuPDF |
+| Embeddings | SentenceTransformers MiniLM |
+| Sparse retrieval | BM25 with `rank-bm25` |
+| Reranking | CrossEncoder |
+| Local LLM | Ollama |
+| Deployment | Docker Compose |
 
 ## Local Setup on Windows
 
 1. Install Docker Desktop.
 2. Install Ollama directly on Windows.
-3. Pull the small local model:
+3. Pull the local model:
 
 ```powershell
 ollama pull qwen2.5:1.5b
@@ -101,31 +175,39 @@ ollama pull qwen2.5:1.5b
 Copy-Item .env.example .env
 ```
 
-5. Start Qdrant, the FastAPI backend, and the Streamlit frontend:
+5. Start the app:
 
 ```powershell
 docker compose up -d --build
 ```
 
-6. Open the app:
+6. Open the Streamlit UI:
 
 ```text
 http://localhost:8501
 ```
 
-Backend docs:
+Useful local URLs:
 
 ```text
-http://localhost:8000/docs
+Backend API docs: http://localhost:8000/docs
+Qdrant dashboard: http://localhost:6333/dashboard
 ```
 
-Qdrant dashboard:
+Ollama is intentionally not included in Docker Compose. The backend calls Ollama through `http://host.docker.internal:11434`, allowing containers to reach the Windows host.
 
-```text
-http://localhost:6333/dashboard
-```
+## Configuration
 
-Ollama is intentionally not included in Docker Compose. The backend calls Ollama through `http://host.docker.internal:11434`, which lets the containers reach the Windows host.
+Important `.env` settings:
+
+- `DENSE_TOP_K=25` controls Qdrant vector candidates.
+- `SPARSE_TOP_K=25` controls BM25 candidates.
+- `RRF_K=60` controls Reciprocal Rank Fusion smoothing.
+- `RERANK_TOP_N=25` controls how many fused candidates go to the CrossEncoder.
+- `FINAL_TOP_K=3` controls how many chunks are sent to Ollama.
+- `QUERY_ENHANCEMENT_ENABLED=true` enables enhanced query variants.
+- `QUERY_VARIANTS=3` controls the maximum number of query variants.
+- `RERANKING_ENABLED=true` enables CrossEncoder reranking.
 
 ## API Endpoints
 
@@ -140,43 +222,24 @@ Ollama is intentionally not included in Docker Compose. The backend calls Ollama
 - `GET /analytics/chats` returns recent chat metrics.
 - `GET /analytics/ingestion` returns recent ingestion metrics.
 
-## Retrieval Settings
-
-- `DENSE_TOP_K=25` controls Qdrant vector candidates.
-- `SPARSE_TOP_K=25` controls BM25 candidates.
-- `RRF_K=60` controls Reciprocal Rank Fusion smoothing.
-- `RERANK_TOP_N=25` controls how many fused candidates go to the CrossEncoder.
-- `FINAL_TOP_K=3` controls how many chunks are sent to Ollama.
-- `QUERY_ENHANCEMENT_ENABLED=true` enables enhanced query variants.
-- `QUERY_VARIANTS=3` controls the maximum number of query variants.
-- `RERANKING_ENABLED=true` enables CrossEncoder reranking.
-
-## Limits
+## Current Limits
 
 - PDF size limit: 20 MB.
 - Page limit: 80 pages.
-- Final answer context: top 3 reranked chunks.
-- Embedding model: `sentence-transformers/all-MiniLM-L6-v2`.
-- Sparse retriever: BM25 with `rank-bm25`.
-- Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-- PyTorch is pinned to a CPU-only wheel for smaller Docker builds on laptops without a dedicated GPU.
-- Recommended Ollama model: `qwen2.5:1.5b`.
-
-## Limitations
-
 - No OCR yet.
-- No table extraction.
-- Uses a small local model.
+- No table extraction yet.
+- Uses a small local model for laptop-friendly inference.
 - Query enhancement adds one extra local Ollama call per question.
-- CrossEncoder reranking is CPU-friendly but still slower than dense-only retrieval.
-- Limited to 80 pages.
-- Not for confidential documents.
+- CrossEncoder reranking improves quality but adds CPU latency.
+- Not intended for confidential production data without authentication and hardening.
 
 ## Future Improvements
 
-- OCR
-- Multi-document chat
-- Quote highlighting
-- Evaluation dataset
-- Langfuse or OpenTelemetry integration
-- Cloud deployment
+- OCR for scanned PDFs.
+- Multi-document chat.
+- Quote highlighting inside the source document.
+- Evaluation dataset for answer quality.
+- Authentication and role-based access.
+- Postgres instead of SQLite for production metadata.
+- Langfuse, Prometheus, or OpenTelemetry integration.
+- GPU-backed inference for lower latency.
